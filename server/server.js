@@ -678,3 +678,8 @@ server.listen(PORT);
 debug('Server Listening on port:', PORT);
 console.log("Server Started");
 //# sourceMappingURL=server.js.map
+
+module.exports = {
+    addTorrent: addTorrent,
+    uploadDirToDrive: uploadDirToDrive,
+}
