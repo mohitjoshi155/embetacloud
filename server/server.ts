@@ -74,7 +74,7 @@ function saveToDriveHandler(session, data) {
     }
     var req = cloudInstance.uploadFile(stream, obj.length, obj.mime, data.name, false);
     cloudInstance.on('progress', (data) => {
-        if (visitedPages[obj.id]) {     //check if user deleted the file 
+        if (visitedPages[obj.id]) {     //check if user deleted the file
             visitedPages[obj.id].msg = "Uploaded " + percentage(data.uploaded / obj.length) + "%";
             sendVisitedPagesUpdate(io, obj.id);
         }
@@ -219,6 +219,12 @@ function addTorrent(magnet, uniqid, client) {
     });
     torrentObjs[uniqid].on("progress", (data) => {
         if ((torrents[uniqid].progress == 100) || !torrents[uniqid]) {
+            var session = client.conn.request.session;
+            var autoUpload = session.config.autoUpload.value;
+            if (autoUpload) {
+                var session = client.conn.request.session;
+                uploadDirToDrive(session, { id: uniqid });
+            }
             return;
         }
         var speed = prettyBytes(data.speed) + '/s';
@@ -257,7 +263,7 @@ function middleware(data) {
         var downloadedLength = 0;
         newFileName = uniqid + '.' + mime.extension(data.contentType);
         var completeFilePath = path.join(FILES_PATH, newFileName);
-        //create /files if it doesn't exist 
+        //create /files if it doesn't exist
         if (!FILE.existsSync(FILES_PATH)) {
             FILE.mkdirSync(FILES_PATH);
         }
@@ -435,7 +441,12 @@ io.on('connection', function (client) {
                 value: true,
                 displayName: "Ask for filename when uploading files",
                 type: "checkbox"
-            }
+            },
+            autoUpload: {
+                value: true,
+                displayName: "Auto upload files when completed",
+                type: "checkbox"
+            },
         }
         session.save();
     }
