@@ -15,6 +15,7 @@ const scrapeIt = require("scrape-it");
 const http = require("http");
 const path = require("path");
 const magnetLink = require("magnet-link");
+const parsetorrent = require('parse-torrent')
 
 import * as mime from 'mime';
 import { Storages } from './Storages/Storages';
@@ -562,24 +563,18 @@ io.on('connection', function (client) {
             return false;
         }
         var uniqid = shortid();
-        if (!data.magnet.startsWith("magnet")) {
-            //try to load magnet
-            magnetLink(data.magnet, (err, link) => {
-                if (err) {
-                    debug(`Failed to load magnet from torrent: ${err.message}`);
-                    client.emit("setObj", {
-                        name: 'magnetLoading',
-                        value: false
-                    });
-                    client.emit("alert", "Unable to load the .torrent");
-                    return;
-                }
-                //all good !! add magnet
-                addTorrent(link, uniqid, client);
-            });
-            return;
-        }
-        addTorrent(data.magnet, uniqid, client);
+        parsetorrent.remote(data.magnet, (err, parsedtorrent) => {
+            if (err) {
+                debug("Failed to load magnet from torrent: " + err.message);
+                client.emit("setObj", {
+                    name: 'magnetLoading',
+                    value: false
+                });
+                client.emit("alert", "Unable to load the .torrent");
+                return;
+            }
+            addTorrent(parsedtorrent, uniqid, client);
+        })
     });
     client.on('getDirStructure', (data) => {
         var id = data.id;
