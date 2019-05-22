@@ -4,8 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server/server.js",
-    "build": "tsc"
+    "start": "node server/server.js"
   },
   "author": "Mrigank Krishan",
   "license": "ISC",
