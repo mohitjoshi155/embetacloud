@@ -15,7 +15,8 @@ Somebody is requested to upload it to a high-speed server so that it's made open
 - Zip and download torrents
 - Zip and upload torrents to Drive
 - Auto-Upload to GDrive on completion
-- Multiple Cloud Storage support, currently : 
+- Session managment with MongoDB
+- Multiple Cloud Storage support, currently :
     - Google Drive
     - Mega
 
@@ -28,11 +29,12 @@ You have to make a google developers project and set the following environment v
 - GOOGLE_CLIENT_ID
 - GOOGLE_CLIENT_SECRET
 - GOOGLE_REDIRECT_URL (it should be &lt;server address&gt;/oauthCallback by default)
-  
+
 Other environment variables:
 - TBP_PROXY: piratebay proxy to use (default: `https://thepiratebay.org`)
+- MONGODB: mongodb connection string for session managment (Not mandatory)
 
-Ensure that you request full google drive access permission and basic G+ info in your google project 
+Ensure that you request full google drive access permission and basic G+ info in your google project
 
 To start server, run:
 ```js
@@ -42,8 +44,8 @@ npm start
 <i>Heroku is no longer supported.</i>
 
 <h2> For Docker: </h2>
-`docker run -d -p 3000:3000 -e GOOGLE_CLIENT_ID='***' 
--e GOOGLE_CLIENT_SECRET='***' 
+`docker run -d -p 3000:3000 -e GOOGLE_CLIENT_ID='***'
+-e GOOGLE_CLIENT_SECRET='***'
 -e GOOGLE_REDIRECT_URL='***'
 mrigank11/embetacloud node server/server.js`
 
@@ -68,7 +70,7 @@ and start server.
 Adding new clouds is easy, just follow these steps:
 
 1. Create new folder inside `/server/Storages/` (e.g. `/server/Storages/DropBox`) and add `.ts` file to it with same name as that of folder (say `/server/Storages/DropBox/Dropbox.ts`)
-2. Now you've to write your code in that file, the template is 
+2. Now you've to write your code in that file, the template is
 
 ```ts
 export class CloudName extends EventEmitter{
@@ -88,7 +90,7 @@ export class CloudName extends EventEmitter{
     public uploadFile(readStream, totalSize, mime, filename){
         //handle the upload procedure
         //it should emit => progress        : {name,bytesUploaded,size}
-        //                  fileUploaded    : {size, name , error} 
+        //                  fileUploaded    : {size, name , error}
     }
     public uploadDir(localFolderPath){          //not necessary
         //upload a local directory
@@ -96,7 +98,7 @@ export class CloudName extends EventEmitter{
         //may emit       => mkdir      : name      name of cloud directory created
     }
 }
-``` 
+```
 
 For example, see `/server/Storages/GDrive/GDrive.ts`
 
