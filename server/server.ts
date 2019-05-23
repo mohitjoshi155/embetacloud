@@ -15,7 +15,10 @@ const scrapeIt = require("scrape-it");
 const http = require("http");
 const path = require("path");
 const magnetLink = require("magnet-link");
-const parsetorrent = require('parse-torrent')
+const parsetorrent = require('parse-torrent');
+const MongoStore = require('connect-mongo')(session);
+const mongoose = require('mongoose');
+
 
 import * as mime from 'mime';
 import { Storages } from './Storages/Storages';
@@ -29,6 +32,7 @@ const PORT = Number(process.env.PORT || 3000);
 const FILES_PATH = process.env["FILES_PATH"] || path.join(__dirname, '../files');
 const SPEED_TICK_TIME = 750;    //ms
 const TBP_PROXY = process.env["TBP_PROXY"] || "https://thepiratebay.org";
+const MONGODB_CONNECTION = process.env["MONGODB"]
 //endregion
 //region Init
 var capture = false;
@@ -367,13 +371,22 @@ function sendTorrentsUpdate(socket, id, imp?: Array<string>) {
         ignore: ignore
     });
 }
-//endregion
-//region set up express
-var sessionMiddleware = session({
+const sessionOptions = {
     secret: "XYeMBetaCloud",
     resave: false,
     saveUninitialized: true
-});
+};
+
+if (MONGODB_CONNECTION) {
+    mongoose.connect(MONGODB_CONNECTION, { useNewUrlParser: true });
+    mongoose.Promise = global.Promise;
+    const db = mongoose.connection;
+    sessionOptions.store = new MongoStore({ mongooseConnection: db })
+}
+
+//endregion
+//region set up express
+var sessionMiddleware = session(sessionOptions);
 app.use(sessionMiddleware);
 //set up unblocker
 app.set("trust proxy", true);
