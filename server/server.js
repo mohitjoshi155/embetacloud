@@ -15,6 +15,8 @@ var http = require("http");
 var path = require("path");
 var magnetLink = require("magnet-link");
 var parsetorrent = require('parse-torrent');
+var MongoStore = require('connect-mongo')(session);
+var mongoose = require('mongoose');
 var mime = require("mime");
 var Storages_1 = require("./Storages/Storages");
 var Torrent_1 = require("./Torrent/Torrent");
@@ -27,6 +29,7 @@ var PORT = Number(process.env.PORT || 3000);
 var FILES_PATH = process.env["FILES_PATH"] || path.join(__dirname, '../files');
 var SPEED_TICK_TIME = 750; //ms
 var TBP_PROXY = process.env["TBP_PROXY"] || "https://thepiratebay.org";
+var MONGODB_CONNECTION = process.env["MONGODB"];
 //endregion
 //region Init
 var capture = false;
@@ -373,13 +376,20 @@ function sendTorrentsUpdate(socket, id, imp) {
         ignore: ignore
     });
 }
-//endregion
-//region set up express
-var sessionMiddleware = session({
+var sessionOptions = {
     secret: "XYeMBetaCloud",
     resave: false,
     saveUninitialized: true
-});
+};
+if (MONGODB_CONNECTION) {
+    mongoose.connect(MONGODB_CONNECTION, { useNewUrlParser: true });
+    mongoose.Promise = global.Promise;
+    var db = mongoose.connection;
+    sessionOptions.store = new MongoStore({ mongooseConnection: db });
+}
+//endregion
+//region set up express
+var sessionMiddleware = session(sessionOptions);
 app.use(sessionMiddleware);
 //set up unblocker
 app.set("trust proxy", true);
