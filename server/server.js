@@ -30,6 +30,7 @@ var FILES_PATH = process.env["FILES_PATH"] || path.join(__dirname, '../files');
 var SPEED_TICK_TIME = 750; //ms
 var TBP_PROXY = process.env["TBP_PROXY"] || "https://thepiratebay.org";
 var MONGODB_CONNECTION = process.env["MONGODB"];
+var COMPLETE = 100;
 //endregion
 //region Init
 var capture = false;
@@ -51,7 +52,7 @@ function percentage(n) {
 function saveToDriveHandler(session, data) {
     var obj = data.data;
     var sessionID = session.id;
-    if (obj.progress !== 100) {
+    if (obj.progress !== COMPLETE) {
         var i = visitedPages[obj.id].uploadTo.indexOf(session);
         if (i > -1) {
             //already in Array
@@ -106,7 +107,7 @@ function saveToDriveHandler(session, data) {
 function uploadDirToDrive(session, data) {
     var id = data.id;
     var sessionID = session.id;
-    if (torrents[id].progress !== 100) {
+    if (torrents[id].progress !== COMPLETE) {
         var i = torrents[id].uploadTo.indexOf(session);
         if (i > -1) {
             //already in Array
@@ -141,9 +142,16 @@ function uploadDirToDrive(session, data) {
         }
         uploaded += data.size;
         var name = data.name;
+        var cloudUploadProgress = percentage(uploaded / dirSize);
         torrents[id].msg = "Uploaded " + name + " successfully | Total: " + percentage(uploaded / dirSize) + "%";
-        torrents[id].cloudUploadProgress = percentage(uploaded / dirSize);
+        torrents[id].cloudUploadProgress = cloudUploadProgress;
         sendTorrentsUpdate(io, id);
+        if (cloudUploadProgress === COMPLETE) {
+            var autoDelete = session.config.autoDelete.value;
+            if (autoDelete) {
+                clearTorrent(id);
+            }
+        }
     });
     cloudInstance.on('progress', function (data) {
         if (!torrents[id]) {
@@ -169,7 +177,7 @@ function clearVisitedPage(id) {
             name: 'visitedPages',
             key: id
         });
-        if (visitedPages[id].progress == 100) {
+        if (visitedPages[id].progress == COMPLETE) {
             //  download completed but user requested to clear
             // delete downloaded file
             FILE.unlink(path.join(FILES_PATH, '../', visitedPages[id].path));
@@ -188,7 +196,7 @@ function clearTorrent(id) {
             name: 'torrents',
             key: id
         });
-        if (torrents[id].progress == 100) {
+        if (torrents[id].progress == COMPLETE) {
             //  download completed but user requested to clear
             // delete downloaded file
             FILE.remove(path.join(FILES_PATH, id));
@@ -208,9 +216,15 @@ function addTorrent(magnet, uniqid, client) {
     torrentObjs[uniqid] = new Torrent_1.Torrent(magnet, FILES_PATH, uniqid);
     torrentObjs[uniqid].on("downloaded", function (path) {
         //CLOUD.uploadDir(path, oauth2ClientArray[sessionID]);
-        torrents[uniqid].uploadTo.forEach(function (sessionId) {
-            uploadDirToDrive(sessionId, { id: uniqid });
-        });
+        // torrents[uniqid].uploadTo.forEach(sessionId => {
+        //     uploadDirToDrive(sessionId, { id: uniqid });
+        // });
+        var session = client.conn.request.session;
+        var autoUpload = session.config.autoUpload.value;
+        if (autoUpload) {
+            var session = client.conn.request.session;
+            uploadDirToDrive(session, { id: uniqid });
+        }
     });
     torrentObjs[uniqid].on("info", function (info) {
         torrents[uniqid] = {
@@ -230,23 +244,17 @@ function addTorrent(magnet, uniqid, client) {
         });
     });
     torrentObjs[uniqid].on("progress", function (data) {
-        if ((torrents[uniqid].progress == 100) || !torrents[uniqid]) {
-            var session = client.conn.request.session;
-            var autoUpload = session.config.autoUpload.value;
-            if (autoUpload) {
-                var session = client.conn.request.session;
-                uploadDirToDrive(session, { id: uniqid });
-            }
+        if ((torrents[uniqid].progress == COMPLETE) || !torrents[uniqid]) {
             return;
         }
         var speed = prettyBytes(data.speed) + '/s';
         var downloaded = prettyBytes(data.downloadedLength);
         var progress = percentage((data.downloadedLength / torrents[uniqid].length));
         var peers = data.peers;
-        torrents[uniqid].speed = (progress == 100) ? prettyBytes(0) + '/s' : speed;
+        torrents[uniqid].speed = (progress == COMPLETE) ? prettyBytes(0) + '/s' : speed;
         torrents[uniqid].downloaded = downloaded;
         torrents[uniqid].progress = progress;
-        torrents[uniqid].msg = (progress == 100) ? 'Download completed' : 'Downloading files, peers: ' + peers;
+        torrents[uniqid].msg = (progress == COMPLETE) ? 'Download completed' : 'Downloading files, peers: ' + peers;
         sendTorrentsUpdate(io, uniqid);
     });
 }
@@ -295,7 +303,7 @@ function middleware(data) {
                 }
                 else {
                     var prevProgress = visitedPages[uniqid].progress;
-                    if ((progress - prevProgress) > 0.1 || progress == 100) { //don't clog the socket
+                    if ((progress - prevProgress) > 0.1 || progress == COMPLETE) { //don't clog the socket
                         visitedPages[uniqid].progress = progress;
                         visitedPages[uniqid].downloaded = prettyBytes(downloadedLength);
                         sendVisitedPagesUpdate(io, uniqid);
@@ -462,7 +470,12 @@ io.on('connection', function (client) {
             },
             autoUpload: {
                 value: true,
-                displayName: "Auto upload files when completed",
+                displayName: "Auto upload files when download completed",
+                type: "checkbox"
+            },
+            autoDelete: {
+                value: true,
+                displayName: "Auto delete files when upload completed",
                 type: "checkbox"
             }
         };
@@ -610,7 +623,7 @@ io.on('connection', function (client) {
     client.on("zip", function (data) {
         //exclusively for torrents
         var id = data.id;
-        if (torrents[id].zipping || torrents[id].progress < 100) {
+        if (torrents[id].zipping || torrents[id].progress < COMPLETE) {
             //invalid context
             return false;
         }
@@ -641,7 +654,7 @@ io.on('connection', function (client) {
         archive.on("data", function (chunk) {
             zippedLength += chunk.length;
             var percentNow = percentage(zippedLength / torrents[id].length);
-            if ((percentNow - percent) > 0.1 || percentNow == 100) {
+            if ((percentNow - percent) > 0.1 || percentNow == COMPLETE) {
                 percent = percentNow;
                 torrents[id].msg = "Zipping : " + percentNow + "%";
                 torrents[id].zipping = true;
