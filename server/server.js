@@ -5,7 +5,6 @@ var unblocker = require('./unblocker.js');
 var shortid = require('shortid');
 var session = require('express-session');
 var prettyBytes = require('pretty-bytes');
-var debug = require('debug')("eMCloud::Server");
 var socketIO = require("socket.io");
 var FILE = require("fs-extra");
 var archiver = require("archiver");
@@ -146,6 +145,7 @@ function uploadDirToDrive(session, data) {
         torrents[id].msg = "Uploaded " + name + " successfully | Total: " + percentage(uploaded / dirSize) + "%";
         torrents[id].cloudUploadProgress = cloudUploadProgress;
         sendTorrentsUpdate(io, id);
+        console.log("Upload progress -> " + cloudUploadProgress);
         if (cloudUploadProgress === COMPLETE) {
             var autoDelete = session.config.autoDelete.value;
             if (autoDelete) {
@@ -203,6 +203,7 @@ function clearTorrent(id) {
             FILE.remove(path.join(FILES_PATH, id + ".zip"));
             delete torrents[id];
             delete torrentObjs[id];
+            console.log("Torrent " + id + " deleted");
         }
         else {
             delete torrents[id];
@@ -219,10 +220,11 @@ function addTorrent(magnet, uniqid, client) {
         // torrents[uniqid].uploadTo.forEach(sessionId => {
         //     uploadDirToDrive(sessionId, { id: uniqid });
         // });
+        console.log("Torrent " + uniqid + " downloaded");
         var session = client.conn.request.session;
         var autoUpload = session.config.autoUpload.value;
-        if (autoUpload) {
-            var session = client.conn.request.session;
+        var selectedCloud = session.clouds[session.selectedCloud];
+        if (selectedCloud.creds && autoUpload) {
             uploadDirToDrive(session, { id: uniqid });
         }
     });
@@ -256,6 +258,7 @@ function addTorrent(magnet, uniqid, client) {
         torrents[uniqid].progress = progress;
         torrents[uniqid].msg = (progress == COMPLETE) ? 'Download completed' : 'Downloading files, peers: ' + peers;
         sendTorrentsUpdate(io, uniqid);
+        console.log("Torrent " + uniqid + " progress -> " + progress);
     });
 }
 //endregion
@@ -275,7 +278,7 @@ function middleware(data) {
         if (duplicates.length > 0) {
             return;
         }
-        debug("DL:%s from %s", data.contentType, data.url);
+        console.log("DL:%s from %s", data.contentType, data.url);
         var uniqid = shortid.generate();
         var totalLength = data.headers['content-length'];
         var downloadedLength = 0;
@@ -328,7 +331,7 @@ function middleware(data) {
                 visitedPages[uniqid].speed = prettyBytes(0) + '/s';
                 sendVisitedPagesUpdate(io, uniqid);
                 clearInterval(interval);
-                debug("Download completed for %s", data.url);
+                console.log("Download completed for %s", data.url);
                 var array = visitedPages[uniqid].uploadTo;
                 array.forEach(function (sessionID) {
                     saveToDriveHandler(sessionID, {
@@ -595,7 +598,7 @@ io.on('connection', function (client) {
         var uniqid = shortid();
         parsetorrent.remote(data.magnet, function (err, parsedtorrent) {
             if (err) {
-                debug("Failed to load magnet from torrent: " + err.message);
+                console.log("Failed to load magnet from torrent: " + err.message);
                 client.emit("setObj", {
                     name: 'magnetLoading',
                     value: false
@@ -636,14 +639,14 @@ io.on('connection', function (client) {
         });
         // listen for all archive data to be written
         output.on('close', function () {
-            debug("Zipped %s successfully", id);
+            console.log("Zipped %s successfully", id);
             torrents[id].zipping = false;
             torrents[id].msg = "Zipped Successfully";
             torrents[id].zipExists = true;
             sendTorrentsUpdate(io, id);
         });
         archive.on('error', function (err) {
-            debug("Error while zipping %s : %s", id, err);
+            console.log("Error while zipping %s : %s", id, err);
         });
         // pipe archive data to the file
         archive.pipe(output);
@@ -707,6 +710,6 @@ io.on('connection', function (client) {
 });
 //endregion
 server.listen(PORT);
-debug('Server Listening on port:', PORT);
+console.log('Server Listening on port:', PORT);
 console.log("Server Started");
 //# sourceMappingURL=server.js.map
