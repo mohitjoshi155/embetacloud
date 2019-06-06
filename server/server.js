@@ -29,6 +29,7 @@ var FILES_PATH = process.env["FILES_PATH"] || path.join(__dirname, '../files');
 var SPEED_TICK_TIME = 750; //ms
 var TBP_PROXY = process.env["TBP_PROXY"] || "https://thepiratebay.org";
 var MONGODB_CONNECTION = process.env["MONGODB"];
+console.log('MONGODB_CONNECTION', MONGODB_CONNECTION);
 var COMPLETE = 100;
 //endregion
 //region Init
