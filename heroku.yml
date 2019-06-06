@@ -2,4 +2,4 @@ build:
   docker:
     web: Dockerfile
 run:
-  web: exec PORT=$PORT node /app/server/server.js
+  web: exec node /app/server/server.js
