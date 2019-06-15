@@ -1,4 +1,39 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (_) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
 exports.__esModule = true;
 //region requires
 var unblocker = require('./unblocker.js');
@@ -29,7 +64,6 @@ var FILES_PATH = process.env["FILES_PATH"] || path.join(__dirname, '../files');
 var SPEED_TICK_TIME = 750; //ms
 var TBP_PROXY = process.env["TBP_PROXY"] || "https://thepiratebay.org";
 var MONGODB_CONNECTION = process.env["MONGODB"];
-console.log('MONGODB_CONNECTION', MONGODB_CONNECTION);
 var COMPLETE = 100;
 //endregion
 //region Init
@@ -38,10 +72,13 @@ var app = express();
 var server = http.createServer(app);
 var io = socketIO(server);
 var visitedPages = {};
-var torrents = {};
+var torrents = undefined;
 var torrentObjs = {};
 var filter = new Filter_1.Filter();
 //endregion
+// Mongo Models
+var TorrentSchema = new mongoose.Schema({}, { strict: false });
+var TorrentModel = mongoose.model('torrents', TorrentSchema);
 //region Utilities
 function percentage(n) {
     var p = (Math.round(n * 1000) / 10);
@@ -193,23 +230,25 @@ function clearVisitedPage(id) {
 }
 function clearTorrent(id) {
     if (!torrents[id].pinned) {
-        io.emit("deleteKey", {
-            name: 'torrents',
-            key: id
-        });
+        // io.emit("deleteKey", {
+        //     name: 'torrents',
+        //     key: id
+        // });
         if (torrents[id].progress == COMPLETE) {
             //  download completed but user requested to clear
             // delete downloaded file
             FILE.remove(path.join(FILES_PATH, id));
             FILE.remove(path.join(FILES_PATH, id + ".zip"));
-            delete torrents[id];
-            delete torrentObjs[id];
+            console.log(torrents);
+            console.log(torrentObjs);
+            // delete torrents[id];
+            // delete torrentObjs[id];
             console.log("Torrent " + id + " deleted");
         }
         else {
-            delete torrents[id];
-            torrentObjs[id].destroy();
-            delete torrentObjs[id];
+            // delete torrents[id];
+            // torrentObjs[id].destroy();
+            // delete torrentObjs[id];
             FILE.remove(path.join(FILES_PATH, id));
         }
     }
@@ -222,12 +261,18 @@ function addTorrent(magnet, uniqid, client) {
         //     uploadDirToDrive(sessionId, { id: uniqid });
         // });
         console.log("Torrent " + uniqid + " downloaded");
+        var torrentToSave = torrents[uniqid];
+        torrentToSave.customId = uniqid;
+        torrentToSave.pinned = false;
+        torrentToSave.msg = 'Download completed';
+        var torrentSchema = new TorrentModel(torrentToSave);
+        torrentSchema.save();
         var session = client.conn.request.session;
         var autoUpload = session.config.autoUpload.value;
         var selectedCloud = session.clouds[session.selectedCloud];
-        if (selectedCloud.creds && autoUpload) {
-            uploadDirToDrive(session, { id: uniqid });
-        }
+        // if (selectedCloud.creds && autoUpload) {
+        //     uploadDirToDrive(session, { id: uniqid });
+        // }
     });
     torrentObjs[uniqid].on("info", function (info) {
         torrents[uniqid] = {
@@ -259,7 +304,7 @@ function addTorrent(magnet, uniqid, client) {
         torrents[uniqid].progress = progress;
         torrents[uniqid].msg = (progress == COMPLETE) ? 'Download completed' : 'Downloading files, peers: ' + peers;
         sendTorrentsUpdate(io, uniqid);
-        console.log("Torrent " + uniqid + " progress -> " + progress);
+        console.log("Torrent[" + uniqid + "] | " + torrents[uniqid].name + " | progress -> " + progress);
     });
 }
 //endregion
@@ -448,265 +493,287 @@ io.use(function (socket, next) {
 });
 //handle socket.io connections
 io.on('connection', function (client) {
-    var sessionID = client.conn.request.sessionID;
-    var session = client.conn.request.session;
-    //Process Session
-    if (!session.clouds) {
-        session.clouds = Storages_1.Storages.getTemplate(); //an object like : {"Gdrive":{displayName:"..",url:".."},"..":{displayName:"..","url":".."}}
-        session.selectedCloud = "GDrive";
-        //config
-        session.config = {
-            clientDownload: {
-                value: false,
-                displayName: "Stream downloads to user",
-                type: "checkbox",
-                title: "Choose whether to stream file to client while catching downloads or not, if unchecked windows will close after download is captured."
-            },
-            csHead: {
-                value: true,
-                displayName: "Show cloud selection button in main menu",
-                type: "checkbox"
-            },
-            askForName: {
-                value: true,
-                displayName: "Ask for filename when uploading files",
-                type: "checkbox"
-            },
-            autoUpload: {
-                value: true,
-                displayName: "Auto upload files when download completed",
-                type: "checkbox"
-            },
-            autoDelete: {
-                value: true,
-                displayName: "Auto delete files when upload completed",
-                type: "checkbox"
-            }
-        };
-        session.save();
-    }
-    //send config
-    client.emit('setObj', {
-        name: "config",
-        value: session.config
-    });
-    //send clouds
-    client.emit('setObj', {
-        name: 'clouds',
-        value: session.clouds
-    });
-    client.emit('setObj', {
-        name: 'selectedCloud',
-        value: session.clouds[session.selectedCloud]
-    });
-    //send downloads
-    client.emit('setObj', {
-        name: 'visitedPages',
-        value: visitedPages
-    });
-    //send torrrents
-    client.emit('setObj', {
-        name: 'torrents',
-        value: torrents
-    });
-    client.emit('setObj', {
-        name: 'incognito',
-        value: session.incognito ? session.incognito : false
-    });
-    client.on('clearVisitedPages', function () {
-        Object.keys(visitedPages).forEach(function (id) {
-            clearVisitedPage(id);
-        });
-    });
-    client.on('clearTorrents', function () {
-        Object.keys(torrents).forEach(function (id) {
-            clearTorrent(id);
-        });
-    });
-    client.on('delete', function (data) {
-        data.isTorrent ? clearTorrent(data.id) : clearVisitedPage(data.id);
-    });
-    client.on('saveToDrive', function (data) {
-        saveToDriveHandler(session, data);
-    });
-    client.on('pin', function (data) {
-        if (data.isTorrent) {
-            torrents[data.page.id].pinned = true;
-            sendTorrentsUpdate(io, data.page.id, ["pinned"]);
-            return false;
-        }
-        visitedPages[data.page.id].pinned = true;
-        sendVisitedPagesUpdate(io, data.page.id, ["pinned"]);
-    });
-    client.on('unpin', function (data) {
-        if (data.isTorrent) {
-            torrents[data.page.id].pinned = false;
-            sendTorrentsUpdate(io, data.page.id, ["pinned"]);
-            return false;
-        }
-        visitedPages[data.page.id].pinned = false;
-        sendVisitedPagesUpdate(io, data.page.id, ["pinned"]);
-    });
-    client.on('pirateSearch', function (data) {
-        var query = data.query;
-        var page = data.page;
-        scrapeIt(TBP_PROXY + "/search/" + encodeURIComponent(query) + "/" + page + "/7/0", {
-            result: {
-                listItem: "tr:not(.header):not(:last-child)",
-                data: {
-                    name: "a.detLink",
-                    size: {
-                        selector: ".detDesc",
-                        convert: function (x) { return x.match(/Size (.*),/)[1]; }
-                    },
-                    seeders: {
-                        selector: "td",
-                        eq: 2
-                    },
-                    leechers: {
-                        selector: "td",
-                        eq: 3
-                    },
-                    magnetLink: {
-                        selector: "a",
-                        eq: 3,
-                        attr: "href"
-                    },
-                    link: {
-                        selector: "a.detLink",
-                        attr: "href",
-                        convert: function (x) { return "https://thepiratebay.org" + x; }
+    return __awaiter(this, void 0, void 0, function () {
+        var sessionID, session, allTorrents;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    sessionID = client.conn.request.sessionID;
+                    session = client.conn.request.session;
+                    torrents = {};
+                    return [4 /*yield*/, TorrentModel.find({}).lean()];
+                case 1:
+                    allTorrents = _a.sent();
+                    allTorrents.forEach(function (torrent) {
+                        if (torrent.customId) {
+                            torrent.id = torrent.customId;
+                            delete torrent.customId;
+                            torrents[torrent.id] = torrent;
+                        }
+                    });
+                    console.log('torrents', torrents);
+                    //Process Session
+                    if (!session.clouds) {
+                        session.clouds = Storages_1.Storages.getTemplate(); //an object like : {"Gdrive":{displayName:"..",url:".."},"..":{displayName:"..","url":".."}}
+                        session.selectedCloud = "GDrive";
+                        //config
+                        session.config = {
+                            clientDownload: {
+                                value: false,
+                                displayName: "Stream downloads to user",
+                                type: "checkbox",
+                                title: "Choose whether to stream file to client while catching downloads or not, if unchecked windows will close after download is captured."
+                            },
+                            csHead: {
+                                value: true,
+                                displayName: "Show cloud selection button in main menu",
+                                type: "checkbox"
+                            },
+                            askForName: {
+                                value: true,
+                                displayName: "Ask for filename when uploading files",
+                                type: "checkbox"
+                            },
+                            autoUpload: {
+                                value: true,
+                                displayName: "Auto upload files when download completed",
+                                type: "checkbox"
+                            },
+                            autoDelete: {
+                                value: true,
+                                displayName: "Auto delete files when upload completed",
+                                type: "checkbox"
+                            }
+                        };
+                        session.save();
                     }
-                }
+                    //send config
+                    client.emit('setObj', {
+                        name: "config",
+                        value: session.config
+                    });
+                    //send clouds
+                    client.emit('setObj', {
+                        name: 'clouds',
+                        value: session.clouds
+                    });
+                    client.emit('setObj', {
+                        name: 'selectedCloud',
+                        value: session.clouds[session.selectedCloud]
+                    });
+                    //send downloads
+                    client.emit('setObj', {
+                        name: 'visitedPages',
+                        value: visitedPages
+                    });
+                    //send torrrents
+                    client.emit('setObj', {
+                        name: 'torrents',
+                        value: torrents
+                    });
+                    client.emit('setObj', {
+                        name: 'incognito',
+                        value: session.incognito ? session.incognito : false
+                    });
+                    client.on('clearVisitedPages', function () {
+                        Object.keys(visitedPages).forEach(function (id) {
+                            clearVisitedPage(id);
+                        });
+                    });
+                    client.on('clearTorrents', function () {
+                        Object.keys(torrents).forEach(function (id) {
+                            clearTorrent(id);
+                        });
+                    });
+                    client.on('delete', function (data) {
+                        data.isTorrent ? clearTorrent(data.id) : clearVisitedPage(data.id);
+                        TorrentSchema.deleteOne({ id: data.id });
+                    });
+                    client.on('saveToDrive', function (data) {
+                        saveToDriveHandler(session, data);
+                    });
+                    client.on('pin', function (data) {
+                        if (data.isTorrent) {
+                            torrents[data.page.id].pinned = true;
+                            sendTorrentsUpdate(io, data.page.id, ["pinned"]);
+                            return false;
+                        }
+                        visitedPages[data.page.id].pinned = true;
+                        sendVisitedPagesUpdate(io, data.page.id, ["pinned"]);
+                    });
+                    client.on('unpin', function (data) {
+                        if (data.isTorrent) {
+                            torrents[data.page.id].pinned = false;
+                            sendTorrentsUpdate(io, data.page.id, ["pinned"]);
+                            return false;
+                        }
+                        visitedPages[data.page.id].pinned = false;
+                        sendVisitedPagesUpdate(io, data.page.id, ["pinned"]);
+                    });
+                    client.on('pirateSearch', function (data) {
+                        var query = data.query;
+                        var page = data.page;
+                        scrapeIt(TBP_PROXY + "/search/" + encodeURIComponent(query) + "/" + page + "/7/0", {
+                            result: {
+                                listItem: "tr:not(.header):not(:last-child)",
+                                data: {
+                                    name: "a.detLink",
+                                    size: {
+                                        selector: ".detDesc",
+                                        convert: function (x) { return x.match(/Size (.*),/)[1]; }
+                                    },
+                                    seeders: {
+                                        selector: "td",
+                                        eq: 2
+                                    },
+                                    leechers: {
+                                        selector: "td",
+                                        eq: 3
+                                    },
+                                    magnetLink: {
+                                        selector: "a",
+                                        eq: 3,
+                                        attr: "href"
+                                    },
+                                    link: {
+                                        selector: "a.detLink",
+                                        attr: "href",
+                                        convert: function (x) { return "https://thepiratebay.org" + x; }
+                                    }
+                                }
+                            }
+                        }).then(function (data) {
+                            client.emit('setObj', {
+                                name: 'search',
+                                value: {
+                                    results: data.result,
+                                    loading: false
+                                }
+                            });
+                        });
+                    });
+                    client.on('addTorrent', function (data) {
+                        var dupes = Object.keys(torrents).filter(function (key) {
+                            return magnet.decode(data.magnet).infoHash == torrents[key].infoHash;
+                        });
+                        if (dupes.length > 0) {
+                            return false;
+                        }
+                        var uniqid = shortid();
+                        parsetorrent.remote(data.magnet, function (err, parsedtorrent) {
+                            if (err) {
+                                console.log("Failed to load magnet from torrent: " + err.message);
+                                client.emit("setObj", {
+                                    name: 'magnetLoading',
+                                    value: false
+                                });
+                                client.emit("alert", "Unable to load the .torrent");
+                                return;
+                            }
+                            addTorrent(parsedtorrent, uniqid, client);
+                        });
+                    });
+                    client.on('getDirStructure', function (data) {
+                        var id = data.id;
+                        var dirStructure = torrentObjs[id].getDirObj();
+                        torrents[id].gettingDirStructure = false;
+                        torrents[id].dirStructure = dirStructure;
+                        torrents[id].msg = 'Got directory structure';
+                        torrents[id].showFiles = true;
+                        sendTorrentsUpdate(client, id);
+                        //fix directory structure not hidden after page reload
+                        torrents[id].showFiles = false;
+                    });
+                    client.on("uploadDirToDrive", function (data) {
+                        uploadDirToDrive(session, data);
+                    });
+                    client.on("zip", function (data) {
+                        //exclusively for torrents
+                        var id = data.id;
+                        if (torrents[id].zipping || torrents[id].progress < COMPLETE) {
+                            //invalid context
+                            return false;
+                        }
+                        var zippedLength = 0;
+                        //no need to check if zip exists
+                        //event will emit only if zipExists is not set
+                        var output = FILE.createWriteStream(path.join(FILES_PATH, id + ".zip"));
+                        var archive = archiver('zip', {
+                            store: true // Sets the compression method to STORE.
+                        });
+                        // listen for all archive data to be written
+                        output.on('close', function () {
+                            console.log("Zipped %s successfully", id);
+                            torrents[id].zipping = false;
+                            torrents[id].msg = "Zipped Successfully";
+                            torrents[id].zipExists = true;
+                            sendTorrentsUpdate(io, id);
+                        });
+                        archive.on('error', function (err) {
+                            console.log("Error while zipping %s : %s", id, err);
+                        });
+                        // pipe archive data to the file
+                        archive.pipe(output);
+                        archive.directory(path.join(FILES_PATH, id), false);
+                        archive.finalize();
+                        var percent = 0;
+                        //listen for progress
+                        archive.on("data", function (chunk) {
+                            zippedLength += chunk.length;
+                            var percentNow = percentage(zippedLength / torrents[id].length);
+                            if ((percentNow - percent) > 0.1 || percentNow == COMPLETE) {
+                                percent = percentNow;
+                                torrents[id].msg = "Zipping : " + percentNow + "%";
+                                torrents[id].zipping = true;
+                                sendTorrentsUpdate(io, id);
+                            }
+                        });
+                    });
+                    client.on("toggleIncognito", function () {
+                        session.incognito = !session.incognito;
+                        session.save();
+                    });
+                    client.on("uploadZipToCloud", function (data) {
+                        var id = data.id;
+                        var name = data.name;
+                        var loc = path.join(FILES_PATH, id + ".zip");
+                        var cloud = Storages_1.Storages.getStorage(session.selectedCloud);
+                        var cloudInstance = new cloud(session.clouds[session.selectedCloud].creds);
+                        if (!cloudInstance.uploadFile) {
+                            visitedPages[id].msg = "Feature Unavailable";
+                            sendVisitedPagesUpdate(io, id);
+                            return;
+                        }
+                        cloudInstance.uploadFile(FILE.createReadStream(loc), FILE.statSync(loc).size, mime.lookup(loc), name, false);
+                        cloudInstance.on("progress", function (data) {
+                            torrents[id].msg = "Uploading Zip: " + percentage(data.uploaded / data.size) + "%";
+                            torrents[id].zipping = true;
+                            sendTorrentsUpdate(io, id);
+                        });
+                        cloudInstance.on("fileUploaded", function (data) {
+                            torrents[id].msg = "Uploaded Zip Successfully";
+                            torrents[id].zipping = false;
+                            sendTorrentsUpdate(io, id);
+                        });
+                    });
+                    client.on("selectCloud", function (data) {
+                        var cloud = data.cloud;
+                        if (session.clouds[cloud]) {
+                            session.selectedCloud = cloud;
+                            session.save();
+                            client.emit('setObj', {
+                                name: 'selectedCloud',
+                                value: session.clouds[session.selectedCloud]
+                            });
+                        }
+                    });
+                    client.on("updateConfig", function (config) {
+                        session.config = config;
+                        session.save();
+                    });
+                    return [2 /*return*/];
             }
-        }).then(function (data) {
-            client.emit('setObj', {
-                name: 'search',
-                value: {
-                    results: data.result,
-                    loading: false
-                }
-            });
         });
-    });
-    client.on('addTorrent', function (data) {
-        var dupes = Object.keys(torrents).filter(function (key) {
-            return magnet.decode(data.magnet).infoHash == torrents[key].infoHash;
-        });
-        if (dupes.length > 0) {
-            return false;
-        }
-        var uniqid = shortid();
-        parsetorrent.remote(data.magnet, function (err, parsedtorrent) {
-            if (err) {
-                console.log("Failed to load magnet from torrent: " + err.message);
-                client.emit("setObj", {
-                    name: 'magnetLoading',
-                    value: false
-                });
-                client.emit("alert", "Unable to load the .torrent");
-                return;
-            }
-            addTorrent(parsedtorrent, uniqid, client);
-        });
-    });
-    client.on('getDirStructure', function (data) {
-        var id = data.id;
-        var dirStructure = torrentObjs[id].getDirObj();
-        torrents[id].gettingDirStructure = false;
-        torrents[id].dirStructure = dirStructure;
-        torrents[id].msg = 'Got directory structure';
-        torrents[id].showFiles = true;
-        sendTorrentsUpdate(client, id);
-        //fix directory structure not hidden after page reload
-        torrents[id].showFiles = false;
-    });
-    client.on("uploadDirToDrive", function (data) {
-        uploadDirToDrive(session, data);
-    });
-    client.on("zip", function (data) {
-        //exclusively for torrents
-        var id = data.id;
-        if (torrents[id].zipping || torrents[id].progress < COMPLETE) {
-            //invalid context
-            return false;
-        }
-        var zippedLength = 0;
-        //no need to check if zip exists
-        //event will emit only if zipExists is not set
-        var output = FILE.createWriteStream(path.join(FILES_PATH, id + ".zip"));
-        var archive = archiver('zip', {
-            store: true // Sets the compression method to STORE.
-        });
-        // listen for all archive data to be written
-        output.on('close', function () {
-            console.log("Zipped %s successfully", id);
-            torrents[id].zipping = false;
-            torrents[id].msg = "Zipped Successfully";
-            torrents[id].zipExists = true;
-            sendTorrentsUpdate(io, id);
-        });
-        archive.on('error', function (err) {
-            console.log("Error while zipping %s : %s", id, err);
-        });
-        // pipe archive data to the file
-        archive.pipe(output);
-        archive.directory(path.join(FILES_PATH, id), false);
-        archive.finalize();
-        var percent = 0;
-        //listen for progress
-        archive.on("data", function (chunk) {
-            zippedLength += chunk.length;
-            var percentNow = percentage(zippedLength / torrents[id].length);
-            if ((percentNow - percent) > 0.1 || percentNow == COMPLETE) {
-                percent = percentNow;
-                torrents[id].msg = "Zipping : " + percentNow + "%";
-                torrents[id].zipping = true;
-                sendTorrentsUpdate(io, id);
-            }
-        });
-    });
-    client.on("toggleIncognito", function () {
-        session.incognito = !session.incognito;
-        session.save();
-    });
-    client.on("uploadZipToCloud", function (data) {
-        var id = data.id;
-        var name = data.name;
-        var loc = path.join(FILES_PATH, id + ".zip");
-        var cloud = Storages_1.Storages.getStorage(session.selectedCloud);
-        var cloudInstance = new cloud(session.clouds[session.selectedCloud].creds);
-        if (!cloudInstance.uploadFile) {
-            visitedPages[id].msg = "Feature Unavailable";
-            sendVisitedPagesUpdate(io, id);
-            return;
-        }
-        cloudInstance.uploadFile(FILE.createReadStream(loc), FILE.statSync(loc).size, mime.lookup(loc), name, false);
-        cloudInstance.on("progress", function (data) {
-            torrents[id].msg = "Uploading Zip: " + percentage(data.uploaded / data.size) + "%";
-            torrents[id].zipping = true;
-            sendTorrentsUpdate(io, id);
-        });
-        cloudInstance.on("fileUploaded", function (data) {
-            torrents[id].msg = "Uploaded Zip Successfully";
-            torrents[id].zipping = false;
-            sendTorrentsUpdate(io, id);
-        });
-    });
-    client.on("selectCloud", function (data) {
-        var cloud = data.cloud;
-        if (session.clouds[cloud]) {
-            session.selectedCloud = cloud;
-            session.save();
-            client.emit('setObj', {
-                name: 'selectedCloud',
-                value: session.clouds[session.selectedCloud]
-            });
-        }
-    });
-    client.on("updateConfig", function (config) {
-        session.config = config;
-        session.save();
     });
 });
 //endregion

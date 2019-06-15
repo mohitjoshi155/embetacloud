@@ -26,6 +26,7 @@ import { Filter } from './Filter/Filter';
 import * as express from 'express';
 import * as url from 'url';
 //endregion
+
 //region Constants
 const PORT = Number(process.env.PORT || 3000);
 const FILES_PATH = process.env["FILES_PATH"] || path.join(__dirname, '../files');
@@ -34,16 +35,24 @@ const TBP_PROXY = process.env["TBP_PROXY"] || "https://thepiratebay.org";
 const MONGODB_CONNECTION = process.env["MONGODB"]
 const COMPLETE = 100;
 //endregion
+
 //region Init
 var capture = false;
 var app = express();
 var server = http.createServer(app);
 var io = socketIO(server);
 var visitedPages = {};
-var torrents = {};
+let torrents = undefined;
 var torrentObjs = {};
 const filter = new Filter();
 //endregion
+
+// Mongo Models
+const TorrentSchema = new mongoose.Schema({},
+    {strict:false }
+);
+var TorrentModel = mongoose.model('torrents', TorrentSchema);
+
 //region Utilities
 function percentage(n): any {
     var p = (Math.round(n * 1000) / 10);
@@ -185,22 +194,24 @@ function clearVisitedPage(id) {
 
 function clearTorrent(id) {
     if (!torrents[id].pinned) {
-        io.emit("deleteKey", {
-            name: 'torrents',
-            key: id
-        });
+        // io.emit("deleteKey", {
+        //     name: 'torrents',
+        //     key: id
+        // });
         if (torrents[id].progress == COMPLETE) {
             //  download completed but user requested to clear
             // delete downloaded file
             FILE.remove(path.join(FILES_PATH, id));
             FILE.remove(path.join(FILES_PATH, id + ".zip"));
-            delete torrents[id];
-            delete torrentObjs[id];
+            console.log(torrents);
+            console.log(torrentObjs);
+            // delete torrents[id];
+            // delete torrentObjs[id];
             console.log(`Torrent ${id} deleted`);
         } else {
-            delete torrents[id];
-            torrentObjs[id].destroy();
-            delete torrentObjs[id];
+            // delete torrents[id];
+            // torrentObjs[id].destroy();
+            // delete torrentObjs[id];
             FILE.remove(path.join(FILES_PATH, id));
         }
     }
@@ -214,12 +225,19 @@ function addTorrent(magnet, uniqid, client) {
         //     uploadDirToDrive(sessionId, { id: uniqid });
         // });
         console.log(`Torrent ${uniqid} downloaded`);
+        const torrentToSave = torrents[uniqid];
+        torrentToSave.customId = uniqid;
+        torrentToSave.pinned = false;
+        torrentToSave.msg = 'Download completed';
+
+        const torrentSchema = new TorrentModel(torrentToSave);
+        torrentSchema.save();
         const session = client.conn.request.session;
         const autoUpload = session.config.autoUpload.value;
         const selectedCloud = session.clouds[session.selectedCloud]
-        if (selectedCloud.creds && autoUpload) {
-            uploadDirToDrive(session, { id: uniqid });
-        }
+        // if (selectedCloud.creds && autoUpload) {
+        //     uploadDirToDrive(session, { id: uniqid });
+        // }
     });
     torrentObjs[uniqid].on("info", (info) => {
         torrents[uniqid] = {
@@ -442,9 +460,23 @@ io.use(function (socket, next) {
     sessionMiddleware(socket.conn.request, socket.conn.request.res, next);
 });
 //handle socket.io connections
-io.on('connection', function (client) {
+io.on('connection', async function (client) {
     var sessionID = client.conn.request.sessionID;
     var session = client.conn.request.session;
+
+
+    torrents = {};
+    const allTorrents = await TorrentModel.find({}).lean();
+    allTorrents.forEach((torrent) => {
+        if (torrent.customId) {
+            torrent.id = torrent.customId;
+            delete torrent.customId;
+            torrents[torrent.id] = torrent;
+        }
+    })
+
+    console.log('torrents', torrents);
+
     //Process Session
     if (!session.clouds) {
         session.clouds = Storages.getTemplate();    //an object like : {"Gdrive":{displayName:"..",url:".."},"..":{displayName:"..","url":".."}}
@@ -520,6 +552,7 @@ io.on('connection', function (client) {
     });
     client.on('delete', data => {
         data.isTorrent ? clearTorrent(data.id) : clearVisitedPage(data.id);
+        TorrentSchema.deleteOne({ id: data.id });
     });
     client.on('saveToDrive', (data) => {
         saveToDriveHandler(session, data);
