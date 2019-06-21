@@ -270,9 +270,9 @@ function addTorrent(magnet, uniqid, client) {
         var session = client.conn.request.session;
         var autoUpload = session.config.autoUpload.value;
         var selectedCloud = session.clouds[session.selectedCloud];
-        // if (selectedCloud.creds && autoUpload) {
-        //     uploadDirToDrive(session, { id: uniqid });
-        // }
+        if (selectedCloud.creds && autoUpload) {
+            uploadDirToDrive(session, { id: uniqid });
+        }
     });
     torrentObjs[uniqid].on("info", function (info) {
         torrents[uniqid] = {
