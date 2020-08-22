@@ -39,7 +39,7 @@ To start server, run:
 npm start
 ```
 <h2>For Heroku:</h2>
-<i>Heroku is no longer supported.</i>
+<i>https://heroku.com/deploy?template=https://github.com/mohitjoshi155/embetacloud/tree/master</i>
 
 <h2> For Docker: </h2>
 `docker run -d -p 3000:3000 -e GOOGLE_CLIENT_ID='***' 
